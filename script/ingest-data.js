@@ -1,28 +1,39 @@
 require('dotenv').config();
 const fs = require('fs');
 const path = require('path');
-const { Configuration, OpenAIApi } = require('openai');
-const { PineconeClient } = require('@pinecone-database/pinecone');
+const { OpenAI } = require('openai');
+const { Pinecone } = require('@pinecone-database/pinecone');
 
+// Initialize a Pinecone client with your API key
 async function ingestData() {
-  // 1. Load environment variables
-  const openAIKey = process.env.OPENAI_API_KEY;
-  const pineconeApiKey = process.env.PINECONE_API_KEY;
-  const pineconeEnv = process.env.PINECONE_ENV;
 
-  // 2. Init clients
-  const openai = new OpenAIApi(new Configuration({ apiKey: openAIKey }));
-  const pinecone = new PineconeClient();
-  await pinecone.init({
-    apiKey: pineconeApiKey,
-    environment: pineconeEnv
+  const openai = new OpenAI({
+    apiKey: process.env.OPENAI_API_KEY, // This is the default and can be omitted
   });
-  const pineconeIndex = pinecone.Index('crustdata-api-docs'); 
-  // Make sure you create an index "crustdata-api-docs" in the Pinecone dashboard
+
+  const pinecone = new Pinecone({
+    apiKey: process.env.PINECONE_API_KEY
+  });
+
+  const indexName = 'crunchdata';             // Name of your index
+  const dimensions = 1536;                  // e.g., 1536 for text-embedding-ada-002
+
+  // Create index with serverless spec
+  await pinecone.createIndex({
+    name: indexName,
+    dimension: dimensions,      // Replace with your model’s embedding dimension
+    metric: 'cosine',           // "cosine", "dotproduct", or "euclidean"
+    spec: {
+      serverless: {
+        cloud: 'aws',
+        region: 'us-east-1'
+      }
+    }
+  });
 
   // 3. Read your documentation
   // For example, reading from a local "docs" folder
-  const docsDir = path.join(__dirname, '../docs');
+  const docsDir = path.join(__dirname, './docs');
   const allFiles = fs.readdirSync(docsDir);
 
   // 4. Chunking function (very naive example)
@@ -36,12 +47,19 @@ async function ingestData() {
   for (const fileName of allFiles) {
     const filePath = path.join(docsDir, fileName);
     const fileContent = fs.readFileSync(filePath, 'utf-8');
+    console.log(fileContent)
     const chunks = chunkText(fileContent);
 
     for (let chunk of chunks) {
       // 5. Get embedding from OpenAI
+      console.log(chunk)
+    }
+
+    for (let chunk of chunks) {
+      // 5. Get embedding from OpenAI
+      console.log(chunk)
       const embeddingResponse = await openai.createEmbedding({
-        model: 'text-embedding-ada-002',
+        model: 'text-embedding-3-small',
         input: chunk
       });
 
@@ -58,6 +76,7 @@ async function ingestData() {
       });
     }
   }
+
 
   // 6. Upsert vectors into Pinecone
   //   You might want to batch them for performance
