@@ -18,19 +18,23 @@ async function main() {
     const pineconeIndex = pinecone.index(indexName, indexHost);
 
     // Define queries of varying difficulty
+    // const queries = {
+    //     easy: "What are the remaining credits?",
+    //     medium: "How can I check my remaining credits for this billing period?",
+    //     hard: "What endpoint returns the remaining credits and how is it accessed?",
+    //     irrelevant: "What is the weather forecast for tomorrow?"
+    // };
+
     const queries = {
-        easy: "What are the remaining credits?",
-        medium: "How can I check my remaining credits for this billing period?",
-        hard: "What endpoint returns the remaining credits and how is it accessed?",
-        irrelevant: "What is the weather forecast for tomorrow?"
-    };
+        test:"How do I search for people given their current title, current company and location?",
+    }
 
     async function generateAnswer(openai, context, query) {
         // Construct messages for the chat completion request
         const messages = [
             {
                 role: "system",
-                content: "You are an assistant who answers questions based on provided context."
+                content: "You are an expert software engineer who build all this api and documentation and should answers questions based on provided context."
             },
             {
                 role: "user",
@@ -39,9 +43,8 @@ async function main() {
         ];
 
         const completionResponse = await openai.chat.completions.create({
-            model: "gpt-3.5-turbo",
+            model: "gpt-4o",
             messages: messages,
-            max_tokens: 200,  // adjust as needed
         });
 
         // Extract and return the answer text
@@ -62,20 +65,14 @@ async function main() {
             // Query Pinecone with the query embedding
             const queryResponse = await pineconeIndex.query({
                 vector: embedding,
-                topK: 3,  // retrieve top 3 most similar vectors
+                topK: 5,  // retrieve top 3 most similar vectors
                 includeMetadata: true,
                 includeValues: false, // set to true if you need the actual vector values
             });
 
             // Print out results
             console.log(`Top results for "${query}":`);
-            //   queryResponse.matches.forEach((match, idx) => {
-            //     console.log(`  Rank ${idx + 1}:`);
-            //     console.log(`    ID: ${match.id}`);
-            //     console.log(`    Score: ${match.score}`);
-            //     console.log(`    Metadata: ${JSON.stringify(match.metadata)}`);
-            //   });
-
+            //console.log(queryResponse);
             if (queryResponse.matches && queryResponse.matches.length > 0) {
                 // Combine texts from topK matches
                 const context = queryResponse.matches
@@ -96,3 +93,4 @@ async function main() {
 }
 
 main().catch(console.error);
+
