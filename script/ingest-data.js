@@ -3,6 +3,7 @@ const fs = require('fs');
 const path = require('path');
 const { OpenAI } = require('openai');
 const { Pinecone } = require('@pinecone-database/pinecone');
+const { getEncoding } = require("js-tiktoken");
 
 // Initialize a Pinecone client with your API key
 async function ingestData() {
@@ -15,24 +16,31 @@ async function ingestData() {
     apiKey: process.env.PINECONE_API_KEY
   });
 
-  const indexName = 'crunchdata';             // Name of your index
+  const indexName = 'crunchdata';  // Name of your index
   const dimensions = 1536;                  // e.g., 1536 for text-embedding-ada-002
+  const batchSize = 100;                    // Number of vectors to upsert in each batch
 
-  // Create index with serverless spec
-  await pinecone.createIndex({
-    name: indexName,
-    dimension: dimensions,      // Replace with your model’s embedding dimension
-    metric: 'cosine',           // "cosine", "dotproduct", or "euclidean"
-    spec: {
-      serverless: {
-        cloud: 'aws',
-        region: 'us-east-1'
-      }
-    }
-  });
+  const enc = getEncoding('cl100k_base');
+  const maxTokensPerChunk = 1000; // you can pick 500, 1000, 2000, etc.
+
+  const existingIndexes = await pinecone.listIndexes();
+  const existingIndexNames = existingIndexes.indexes.map(idx => idx.name);
+
+  if (!existingIndexNames.includes(indexName)) {
+    await pinecone.createIndex({
+      name: indexName,
+      dimension: dimensions,
+      metric: 'cosine',
+      // ... other configuration ...
+    });
+  } else {
+    console.log(`Index "${indexName}" already exists. Skipping creation.`);
+  }
+
+  // For the Node.js SDK, you must specify both the index host and name.
+  const pineconeIndex = pinecone.index(indexName, "crunchdata-8h8qecx.svc.aped-4627-b74a.pinecone.io");
 
   // 3. Read your documentation
-  // For example, reading from a local "docs" folder
   const docsDir = path.join(__dirname, './docs');
   const allFiles = fs.readdirSync(docsDir);
 
@@ -42,32 +50,46 @@ async function ingestData() {
     return tokens;
   }
 
+  function chunkTextByTokens(text, maxTokens) {
+    // Convert entire text to token array
+    const allTokens = enc.encode(text);
+
+    const chunks = [];
+    let start = 0;
+    while (start < allTokens.length) {
+      const end = Math.min(start + maxTokens, allTokens.length);
+      // Slice out the tokens for this chunk
+      const chunkTokens = allTokens.slice(start, end);
+      // Convert the chunk tokens back to text
+      const chunkText = enc.decode(chunkTokens);
+      chunks.push(chunkText);
+      start = end;
+    }
+    return chunks;
+  }
+
   const vectors = [];
 
   for (const fileName of allFiles) {
     const filePath = path.join(docsDir, fileName);
     const fileContent = fs.readFileSync(filePath, 'utf-8');
-    console.log(fileContent)
-    const chunks = chunkText(fileContent);
+    //const chunks = chunkText(fileContent);
+    const chunks = chunkTextByTokens(fileContent, maxTokensPerChunk);
 
     for (let chunk of chunks) {
       // 5. Get embedding from OpenAI
-      console.log(chunk)
-    }
-
-    for (let chunk of chunks) {
-      // 5. Get embedding from OpenAI
-      console.log(chunk)
-      const embeddingResponse = await openai.createEmbedding({
-        model: 'text-embedding-3-small',
+      const embeddingResponse = await openai.embeddings.create({
+        model: 'text-embedding-ada-002',
         input: chunk
       });
 
-      const [{ embedding }] = embeddingResponse.data.data;
+
+      //console.log(embeddingResponse.data)
+      const [{ embedding }] = embeddingResponse.data;
 
       // Prepare upsert data for Pinecone
       vectors.push({
-        id: `${fileName}-${Math.random()}`, // unique ID
+        id: `${fileName}-${Date.now()}`, // unique ID
         values: embedding,
         metadata: {
           source: fileName,
@@ -77,14 +99,11 @@ async function ingestData() {
     }
   }
 
+  fs.writeFileSync('vectors_output.json', JSON.stringify(vectors, null, 2), 'utf-8');
 
-  // 6. Upsert vectors into Pinecone
-  //   You might want to batch them for performance
-  await pineconeIndex.upsert({
-    upsertRequest: {
-      vectors: vectors
-    }
-  });
+  // vectors.map((vector) => {
+  //   pineconeIndex.upsert(vector);
+  // });
 
   console.log('Ingestion complete!');
 }
