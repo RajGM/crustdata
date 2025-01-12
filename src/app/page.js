@@ -12,41 +12,47 @@ export default function Home() {
 
   const handleSend = async () => {
     if (!input.trim()) return;
-
-    // Display user's message immediately
+  
+    // Add user's message
     setMessages(prev => [...prev, { role: 'user', content: input }]);
     setIsLoading(true);
-
+  
     // Add placeholder for assistant's response
     setMessages(prev => [...prev, { role: 'assistant', content: '...' }]);
-
+  
     try {
-      // Send request to your Express server
+      // Prepare payload including conversation history and current query
+      const payload = {
+        query: input,
+        history: messages // send the conversation history so far
+      };
+  
       const response = await fetch(`${process.env.NEXT_PUBLIC_BACKEND_URL}/api/chat`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ query: input })
+        body: JSON.stringify(payload)
       });
+  
       const data = await response.json();
-
-      // Remove the loading placeholder and add the actual response
+  
+      // Replace placeholder with actual response
       setMessages(prev => {
-        // Remove the last message if it's the loading placeholder
         const updated = prev.slice(0, -1);
         return [...updated, { role: 'assistant', content: data.answer }];
       });
     } catch (err) {
       console.error(err);
-      // Remove the loading placeholder and display error message
       setMessages(prev => {
         const updated = prev.slice(0, -1);
         return [...updated, { role: 'assistant', content: 'Error: Could not get a response.' }];
       });
     } finally {
       setIsLoading(false);
+      console.log(messages);
       setInput('');
     }
   };
+  
 
   return (
     <main className="min-h-screen flex flex-col items-center bg-base-200" data-theme="corporate">
