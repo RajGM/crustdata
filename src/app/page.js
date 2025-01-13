@@ -12,29 +12,29 @@ export default function Home() {
 
   const handleSend = async () => {
     if (!input.trim()) return;
-  
+
     // Add user's message
     setMessages(prev => [...prev, { role: 'user', content: input }]);
     setIsLoading(true);
-  
+
     // Add placeholder for assistant's response
     setMessages(prev => [...prev, { role: 'assistant', content: '...' }]);
-  
+
     try {
       // Prepare payload including conversation history and current query
       const payload = {
         query: input,
         history: messages // send the conversation history so far
       };
-  
+
       const response = await fetch(`${process.env.NEXT_PUBLIC_BACKEND_URL}/api/chat`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload)
       });
-  
+
       const data = await response.json();
-  
+
       // Replace placeholder with actual response
       setMessages(prev => {
         const updated = prev.slice(0, -1);
@@ -52,7 +52,6 @@ export default function Home() {
       setInput('');
     }
   };
-  
 
   return (
     <main className="min-h-screen flex flex-col items-center bg-base-200" data-theme="corporate">
