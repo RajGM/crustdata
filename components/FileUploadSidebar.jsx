@@ -2,10 +2,11 @@
 
 import React, { useState } from 'react';
 import { uploadFileToFirebase } from '@lib/firebaseUtil';
+import { toast } from 'react-hot-toast';
 
 export default function FileUploader({ onFileUpload }) {
   const [file, setFile] = useState(null);
-  const [uploadStatus, setUploadStatus] = useState('');
+  const [isUploading, setIsUploading] = useState(false); // Track upload process
 
   const handleFileChange = (e) => {
     const selectedFile = e.target.files[0];
@@ -14,24 +15,31 @@ export default function FileUploader({ onFileUpload }) {
       const allowedExtensions = /\.md$/i; // Matches files with a .md extension
 
       if (!allowedExtensions.test(selectedFile.name)) {
-        setUploadStatus('Only Markdown (.md) files are allowed.');
+        toast.error('Only Markdown (.md) files are allowed.');
         setFile(null); // Clear any previously selected file
         return;
       }
 
       setFile(selectedFile);
-      setUploadStatus('');
     }
   };
 
   const handleUpload = async () => {
     if (!file) return;
 
-    try {
-      setUploadStatus('Uploading to Firebase...');
-      const downloadURL = await uploadFileToFirebase(file);
-      setUploadStatus('File uploaded to Firebase. Sending URL to backend...');
+    const uploadToast = toast.loading('Uploading file...'); // Initial loading toast
 
+    try {
+      setIsUploading(true);
+
+      // Upload to Firebase
+      const downloadURL = await uploadFileToFirebase(file);
+      toast.success('File uploaded to Firebase!', { id: uploadToast });
+
+      // Notify user that backend processing is starting
+      const processingToast = toast.loading('Processing file on the backend...');
+
+      // Send URL to backend
       const backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL;
       const response = await fetch(`${backendUrl}/upload`, {
         method: 'POST',
@@ -50,15 +58,20 @@ export default function FileUploader({ onFileUpload }) {
       }
 
       const result = await response.json();
-      setUploadStatus(`Upload successful! File URL: ${downloadURL}`);
-      console.log('Server response:', result);
+
+      // Replace the processing toast with a success message
+      toast.success('File processed successfully by the backend!', { id: processingToast });
 
       if (onFileUpload) {
         onFileUpload(file.name, downloadURL);
       }
     } catch (error) {
       console.error(error);
-      setUploadStatus(`Upload failed: ${error.message}`);
+
+      // Replace any existing toast with an error message
+      toast.error(`Upload failed: ${error.message}`, { id: uploadToast });
+    } finally {
+      setIsUploading(false);
     }
   };
 
@@ -77,11 +90,14 @@ export default function FileUploader({ onFileUpload }) {
       </div>
       <div className="flex flex-col items-center gap-4">
         <div className="flex justify-center w-full">
-          <button onClick={handleUpload} className="btn btn-primary" disabled={!file}>
-            Upload File
+          <button
+            onClick={handleUpload}
+            className={`btn btn-primary ${isUploading ? 'btn-disabled' : ''}`}
+            disabled={!file || isUploading}
+          >
+            {isUploading ? 'Uploading...' : 'Upload File'}
           </button>
         </div>
-        {uploadStatus && <p className="text-sm text-center">{uploadStatus}</p>}
       </div>
     </div>
   );

@@ -1,8 +1,8 @@
-// components/ChatFeed.jsx
 'use client';
 
 import React, { useState } from 'react';
 import ReactMarkdown from 'react-markdown';
+import { toast } from 'react-hot-toast';
 
 export default function ChatFeed() {
   const [input, setInput] = useState('');
@@ -15,6 +15,7 @@ export default function ChatFeed() {
     setMessages((prev) => [...prev, { role: 'user', content: input }]);
     setIsLoading(true);
     setMessages((prev) => [...prev, { role: 'assistant', content: '...' }]);
+    const loadingToast = toast.loading('Waiting for a response...');
 
     try {
       const payload = {
@@ -28,22 +29,30 @@ export default function ChatFeed() {
         body: JSON.stringify(payload),
       });
 
+      if (!response.ok) {
+        const errorData = await response.text();
+        throw new Error(`Error: ${response.status} - ${errorData}`);
+      }
+
       const data = await response.json();
-      console.log(data);
 
       setMessages((prev) => {
         const updated = prev.slice(0, -1);
         return [...updated, { role: 'assistant', content: data.answer }];
       });
+
+      toast.success('Response received!', { id: loadingToast });
     } catch (err) {
       console.error(err);
+
       setMessages((prev) => {
         const updated = prev.slice(0, -1);
         return [...updated, { role: 'assistant', content: 'Error: Could not get a response.' }];
       });
+
+      toast.error('Failed to get a response from the server.', { id: loadingToast });
     } finally {
       setIsLoading(false);
-      console.log(messages);
       setInput('');
     }
   };
@@ -64,7 +73,11 @@ export default function ChatFeed() {
             const isUser = msg.role === 'user';
             return (
               <div key={idx} className={`chat ${isUser ? 'chat-start' : 'chat-end'}`}>
-                <div className={`chat-bubble ${isUser ? 'chat-bubble-primary' : 'chat-bubble-accent'}`}>
+                <div
+                  className={`chat-bubble ${
+                    isUser ? 'chat-bubble-primary' : 'chat-bubble-accent'
+                  }`}
+                >
                   <ReactMarkdown>{msg.content}</ReactMarkdown>
                 </div>
               </div>
@@ -81,10 +94,15 @@ export default function ChatFeed() {
             value={input}
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={(e) => {
-              if (e.key === 'Enter') handleSend();
+              if (e.key === 'Enter' && !isLoading) handleSend();
             }}
+            disabled={isLoading} // Disable input while waiting
           />
-          <button className="btn btn-primary" onClick={handleSend} disabled={isLoading}>
+          <button
+            className="btn btn-primary"
+            onClick={handleSend}
+            disabled={isLoading || !input.trim()} // Disable if loading or input is empty
+          >
             {isLoading ? 'Sending...' : 'Send'}
           </button>
         </div>
